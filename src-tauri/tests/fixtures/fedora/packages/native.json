@@ -1,0 +1,4 @@
+[
+  {"name":"neovim","size":48758784,"criticality":"normal"},
+  {"name":"kernel-core","size":278921216,"criticality":"protected"}
+]

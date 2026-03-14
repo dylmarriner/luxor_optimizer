@@ -1,0 +1,30 @@
+[package]
+name = "luxor_optimizer"
+version = "0.1.0"
+edition = "2021"
+description = "Production-grade Linux desktop optimization suite"
+license = "MIT"
+
+[lib]
+name = "luxor_optimizer_lib"
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+anyhow = "1.0"
+blake3 = "1.5"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+hostname = "0.4"
+once_cell = "1.20"
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sysinfo = "0.32"
+tauri = { version = "2.0.0", features = [] }
+thiserror = "2.0"
+uuid = { version = "1.11", features = ["serde", "v4"] }
+walkdir = "2.5"
+which = "6.0"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }

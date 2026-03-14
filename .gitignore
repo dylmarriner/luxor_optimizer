@@ -1,0 +1,11 @@
+node_modules/
+dist/
+frontend/dist/
+src-tauri/target/
+*.AppImage
+*.zsync
+*.tar.gz
+*.log
+*.jsonl
+*.sha256
+.DS_Store

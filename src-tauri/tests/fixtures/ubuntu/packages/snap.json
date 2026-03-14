@@ -1,0 +1,4 @@
+[
+  {"name":"vlc","channel":"stable","publisher":"videolan"},
+  {"name":"core22","channel":"stable","publisher":"canonical"}
+]

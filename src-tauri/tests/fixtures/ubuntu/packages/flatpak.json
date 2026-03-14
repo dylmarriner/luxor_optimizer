@@ -1,0 +1,4 @@
+[
+  {"name":"org.mozilla.firefox","type":"app","scope":"user"},
+  {"name":"org.freedesktop.Platform","type":"runtime","scope":"system"}
+]

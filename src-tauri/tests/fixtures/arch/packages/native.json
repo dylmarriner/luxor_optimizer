@@ -1,0 +1,4 @@
+[
+  {"name":"kitty","size":23068672,"criticality":"normal"},
+  {"name":"linux","size":167772160,"criticality":"protected"}
+]

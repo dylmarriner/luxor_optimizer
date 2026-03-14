@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "reclaimable_bytes": 2147483648,
+    "safe_actions": 4,
+    "review_actions": 6,
+    "optimization_count": 3
+  },
+  "findings": [
+    {
+      "label": "User cache",
+      "path": "/home/<redacted>/.cache",
+      "bytes": 913244321,
+      "disposition": "SafeAuto"
+    },
+    {
+      "label": "Large forgotten downloads",
+      "path": "/home/<redacted>/Downloads",
+      "bytes": 751619276,
+      "disposition": "Review"
+    }
+  ],
+  "optimizations": [
+    {
+      "title": "Validate periodic TRIM",
+      "reversible": false,
+      "risk_score": 0.04
+    }
+  ]
+}

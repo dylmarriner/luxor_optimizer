@@ -1,0 +1,4 @@
+[
+  {"name":"htop","size":4194304,"criticality":"normal"},
+  {"name":"kernel-default","size":285212672,"criticality":"protected"}
+]
