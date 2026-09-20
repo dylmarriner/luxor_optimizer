@@ -36,7 +36,8 @@ export type PackageSource = 'Native' | 'Flatpak' | 'Snap' | 'AppImage';
 export interface Package {
   name: string;
   source: PackageSource;
-  installed_size_bytes: number;
+  /** Null when the packaging system does not report a size. */
+  installed_size_bytes: number | null;
   criticality: string;
   last_used_days_ago?: number;
   install_age_days?: number;
@@ -226,4 +227,23 @@ export async function togglePlugin(id: string, enable: boolean): Promise<void> {
 
 export async function analyzeAuditEvent(eventId: string): Promise<string> {
   return invoke('analyze_audit_event', { eventId });
+}
+
+export interface ChainBreak {
+  event_id: string;
+  position: number;
+  reason: string;
+}
+
+export interface ChainVerification {
+  events_checked: number;
+  /** Pre-rename records whose stored hash cannot be recomputed. Not tampering. */
+  legacy_unverifiable: number;
+  intact: boolean;
+  broken_at: ChainBreak[];
+}
+
+/** Walk the audit chain and confirm every hash and link. */
+export async function verifyAuditChain(): Promise<ChainVerification> {
+  return invoke('verify_audit_chain');
 }

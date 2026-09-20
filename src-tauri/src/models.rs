@@ -81,7 +81,9 @@ pub enum PackageSource {
 pub struct PackageRecord {
     pub name: String,
     pub source: PackageSource,
-    pub installed_size_bytes: u64,
+    /// `None` when the packaging system does not report a size. Unknown is
+    /// represented honestly rather than filled with a placeholder.
+    pub installed_size_bytes: Option<u64>,
     pub criticality: String,
     pub last_used_days_ago: Option<u32>,
     pub install_age_days: Option<u32>,
@@ -130,16 +132,22 @@ pub struct AuditEvent {
     pub session_id: String,
     pub pid: u32,
     pub actor: String,
+    /// Records written before the field rename are read via the alias, so an
+    /// existing log stays readable instead of being silently skipped.
+    #[serde(alias = "action")]
     pub action_type: String,
     pub package_type: Option<String>,
     pub risk_score: f32,
     pub approval_source: String,
     pub dry_run: bool,
     pub status: String,
+    #[serde(alias = "subject")]
     pub target: String,
     pub before: serde_json::Value,
     pub after: serde_json::Value,
     pub details: serde_json::Value,
+    /// Absent in pre-rename records.
+    #[serde(default)]
     pub impact_score: f32,
 }
 

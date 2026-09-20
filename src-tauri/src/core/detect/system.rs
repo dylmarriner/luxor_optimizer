@@ -88,28 +88,83 @@ fn detect_disks() -> Vec<DiskProfile> {
             mount_point: disk.mount_point().display().to_string(),
             fs_type: disk.file_system().to_string_lossy().to_string(),
             kind: format!("{:?}", disk.kind()),
-            is_ssd: disk.is_removable().not(),
+            is_ssd: is_solid_state(&disk.name().to_string_lossy()),
             total_bytes: disk.total_space(),
             available_bytes: disk.available_space(),
         })
         .collect()
 }
 
-fn read_enabled_services() -> Vec<String> {
-    let path = Path::new("/etc/systemd/system");
-    let Ok(entries) = fs::read_dir(path) else {
-        return Vec::new();
+/// Whether a block device is solid state, read from the kernel.
+///
+/// This previously returned `!is_removable()`, which made every internal
+/// spinning disk report as an SSD and fired the TRIM recommendation at
+/// hardware that cannot use it. The kernel already knows: `queue/rotational`
+/// is 0 for SSD and NVMe, 1 for spinning media.
+fn is_solid_state(device_path: &str) -> bool {
+    let Some(name) = device_path.rsplit('/').next() else {
+        return false;
     };
-    let mut seen = HashSet::new();
-    let mut services = Vec::new();
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(".service") && seen.insert(name.clone()) {
-            services.push(name);
+
+    // Walk from the partition up to its parent disk: /sys/block holds whole
+    // devices, so "nvme0n1p2" must be tried as "nvme0n1" and "sda1" as "sda".
+    for candidate in [name.to_string(), strip_partition(name)] {
+        let path = format!("/sys/block/{candidate}/queue/rotational");
+        if let Ok(raw) = fs::read_to_string(&path) {
+            return raw.trim() == "0";
         }
     }
+    // Device mapper, LUKS, btrfs subvolumes and the like have no single
+    // backing queue. Unknown is reported as not-SSD so that SSD-only advice
+    // is withheld rather than guessed at.
+    false
+}
+
+fn strip_partition(name: &str) -> String {
+    // nvme0n1p3 / mmcblk0p1 -> strip the trailing pN.
+    if let Some(idx) = name.rfind('p') {
+        let suffix = &name[idx + 1..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            let base = &name[..idx];
+            if base.chars().last().is_some_and(|c| c.is_ascii_digit()) {
+                return base.to_string();
+            }
+        }
+    }
+    // These families end in a digit when they are already whole devices
+    // (nvme0n1, mmcblk0), so trimming trailing digits would corrupt them.
+    // Having ruled out a pN suffix above, the name is the whole device.
+    if name.starts_with("nvme") || name.starts_with("mmcblk") {
+        return name.to_string();
+    }
+    // sda1 / vdb2 -> strip trailing digits
+    name.trim_end_matches(|c: char| c.is_ascii_digit()).to_string()
+}
+
+/// Units actually enabled at boot.
+///
+/// This used to list directory entries under /etc/systemd/system, which is
+/// neither the set of enabled units (those are symlinks inside `.wants`
+/// directories) nor complete (distro units live in /usr/lib/systemd/system).
+/// It also truncated at 40, so recommendations keyed off this list silently
+/// missed units on most systems. Ask systemd instead.
+fn read_enabled_services() -> Vec<String> {
+    let Ok(output) = Command::new("systemctl")
+        .args(["list-unit-files", "--type=service", "--state=enabled", "--no-legend", "--no-pager"])
+        .output()
+    else {
+        return Vec::new();
+    };
+
+    let mut seen = HashSet::new();
+    let mut services: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|name| name.ends_with(".service"))
+        .filter(|name| seen.insert(name.to_string()))
+        .map(str::to_string)
+        .collect();
     services.sort();
-    services.truncate(40);
     services
 }
 
@@ -136,12 +191,41 @@ fn detect_power_profile() -> Option<String> {
     None
 }
 
-trait BoolNot {
-    fn not(self) -> bool;
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl BoolNot for bool {
-    fn not(self) -> bool {
-        !self
+    #[test]
+    fn partition_names_resolve_to_their_parent_disk() {
+        assert_eq!(strip_partition("nvme0n1p3"), "nvme0n1");
+        assert_eq!(strip_partition("mmcblk0p1"), "mmcblk0");
+        assert_eq!(strip_partition("sda1"), "sda");
+        assert_eq!(strip_partition("vdb12"), "vdb");
+        // Whole devices are already their own parent.
+        assert_eq!(strip_partition("sda"), "sda");
+        assert_eq!(strip_partition("nvme0n1"), "nvme0n1");
+    }
+
+    #[test]
+    fn unknown_devices_are_reported_as_not_ssd_rather_than_guessed() {
+        assert!(!is_solid_state("/dev/mapper/nonexistent-luxor-test"));
+        assert!(!is_solid_state(""));
+    }
+
+    #[test]
+    fn ssd_detection_agrees_with_the_kernel_for_a_real_device() {
+        // Compare against /sys directly for whatever this machine actually has.
+        let Ok(entries) = fs::read_dir("/sys/block") else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let rotational = format!("/sys/block/{name}/queue/rotational");
+            let Ok(raw) = fs::read_to_string(&rotational) else { continue };
+            let expected = raw.trim() == "0";
+            assert_eq!(
+                is_solid_state(&format!("/dev/{name}")),
+                expected,
+                "disagreed with the kernel for {name}"
+            );
+        }
     }
 }

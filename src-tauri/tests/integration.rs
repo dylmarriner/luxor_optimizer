@@ -22,7 +22,7 @@ fn finding(path: &str, disposition: CleanupDisposition) -> CleanupFinding {
 
 #[test]
 fn risk_scoring_protected_packages_stays_high() {
-    let risk = score_package_risk(10, Some(999), Some(999), true);
+    let risk = score_package_risk(Some(10), Some(999), Some(999), true);
     assert!(risk > 0.95);
 }
 
@@ -101,4 +101,25 @@ fn apply_refuses_a_protected_path_even_when_marked_safe() {
             .to_string();
         assert!(err.contains("refusing to purge"), "got: {err}");
     }
+}
+
+#[test]
+fn unknown_package_size_scores_lower_than_a_large_known_one() {
+    // Absent size must not behave like a large package; it contributes nothing.
+    let unknown = score_package_risk(None, None, None, false);
+    let large = score_package_risk(Some(4 * 1024 * 1024 * 1024), None, None, false);
+    assert!(large > unknown, "a known 4GiB package should outrank an unknown size");
+}
+
+#[test]
+fn audit_chain_verifies_clean_on_whatever_this_machine_has_logged() {
+    use luxor_optimizer_lib::core::audit::AuditLogger;
+    let logger = AuditLogger::new().expect("audit logger init");
+    let result = logger.verify_chain().expect("verification should run");
+    assert!(
+        result.intact,
+        "audit chain reported {} breaks: {:?}",
+        result.broken_at.len(),
+        result.broken_at.iter().take(3).collect::<Vec<_>>()
+    );
 }

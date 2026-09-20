@@ -1,5 +1,5 @@
 pub fn score_package_risk(
-    installed_size_bytes: u64,
+    installed_size_bytes: Option<u64>,
     last_used_days_ago: Option<u32>,
     install_age_days: Option<u32>,
     protected: bool,
@@ -8,7 +8,10 @@ pub fn score_package_risk(
         return 0.98;
     }
 
-    let size_factor = (installed_size_bytes as f32 / (1024.0 * 1024.0 * 1024.0)).min(1.0) * 0.20;
+    // An unknown size contributes nothing rather than a guessed midpoint.
+    let size_factor = installed_size_bytes
+        .map(|bytes| (bytes as f32 / (1024.0 * 1024.0 * 1024.0)).min(1.0) * 0.20)
+        .unwrap_or(0.0);
     let recency_factor = match last_used_days_ago {
         Some(days) if days > 180 => 0.10,
         Some(days) if days > 60 => 0.18,

@@ -304,24 +304,75 @@ pub fn toggle_plugin(id: String, enable: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Explain one audit event from the record itself, and state whether the
+/// chain around it is intact.
+///
+/// This replaces a function that formatted invented numbers — a fabricated
+/// byte count and a hardcoded "Risk Assessment: Low" — and presented them to
+/// the user as analysis. Everything below is read from the log.
 #[command]
 pub fn analyze_audit_event(event_id: String) -> Result<String, String> {
     let audit = AuditLogger::new().map_err(|e| e.to_string())?;
     let event = audit.get_event(&event_id).map_err(|e| e.to_string())?;
-    
-    // In a real implementation, this would send the event to an AI service
-    // For now, we return a structured mock analysis
-    let analysis = format!(
-        "AI Analysis for Event {}:\n\n\
-        - Context: This event modified system state relating to '{}'.\n\
-        - Risk Assessment: Low. The change is verified as persistent and standard.\n\
-        - Efficiency Check: Reclaimed approximately {} bytes.\n\
-        - Recommendation: Keep this optimization. It improves boot time by ~{}ms.",
-        event.event_id,
-        event.target,
-        event.impact_score as u64 * 1024, // Mock byte impact
-        (event.impact_score * 50.0) as u64
-    );
+    let chain = audit.verify_chain().map_err(|e| e.to_string())?;
 
-    Ok(analysis)
+    let mut report = vec![
+        format!("Event {}", event.event_id),
+        format!("  When:     {}", event.ts_utc),
+        format!("  Action:   {}", event.action_type),
+        format!("  Target:   {}", event.target),
+        format!("  Actor:    {} (pid {})", event.actor, event.pid),
+        format!("  Dry run:  {}", event.dry_run),
+        format!("  Status:   {}", event.status),
+        format!("  Risk:     {:.2} recorded at apply time", event.risk_score),
+    ];
+
+    match (&event.before, &event.after) {
+        (serde_json::Value::Null, serde_json::Value::Null) => {
+            report.push("  Change:   no before/after state was recorded".to_string());
+        }
+        (before, after) if before == after => {
+            report.push(format!("  Change:   none observed (stayed {before})"));
+        }
+        (before, after) => {
+            report.push(format!("  Change:   {before} -> {after}"));
+        }
+    }
+
+    if let Some(details) = event.details.as_object() {
+        if !details.is_empty() {
+            report.push("  Details:".to_string());
+            for (key, value) in details {
+                report.push(format!("    {key}: {value}"));
+            }
+        }
+    }
+
+    report.push(String::new());
+    if chain.intact {
+        report.push(format!(
+            "Audit chain verified: {} events, all hashes and links match.",
+            chain.events_checked
+        ));
+    } else {
+        report.push(format!(
+            "WARNING: audit chain verification failed across {} events.",
+            chain.events_checked
+        ));
+        for brk in chain.broken_at.iter().take(5) {
+            report.push(format!("  - {} at position {}: {}", brk.event_id, brk.position, brk.reason));
+        }
+        if chain.broken_at.len() > 5 {
+            report.push(format!("  ... and {} more", chain.broken_at.len() - 5));
+        }
+    }
+
+    Ok(report.join("\n"))
+}
+
+/// Verify the whole audit chain without reference to a single event.
+#[command]
+pub fn verify_audit_chain() -> Result<crate::core::audit::ChainVerification, String> {
+    let audit = AuditLogger::new().map_err(|e| e.to_string())?;
+    audit.verify_chain().map_err(|e| e.to_string())
 }
