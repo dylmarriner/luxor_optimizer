@@ -81,7 +81,9 @@ pub enum PackageSource {
 pub struct PackageRecord {
     pub name: String,
     pub source: PackageSource,
-    pub installed_size_bytes: u64,
+    /// `None` when the packaging system does not report a size. Unknown is
+    /// represented honestly rather than filled with a placeholder.
+    pub installed_size_bytes: Option<u64>,
     pub criticality: String,
     pub last_used_days_ago: Option<u32>,
     pub install_age_days: Option<u32>,
@@ -101,6 +103,13 @@ pub struct OptimizationRecommendation {
     pub reversible: bool,
     pub requires_root: bool,
     pub risk_score: f32,
+    /// Whether Luxor can carry this out itself.
+    ///
+    /// False means advisory-only: the recommendation explains what to do, but
+    /// there is no apply path. The UI must not offer an Apply button for these,
+    /// because a button that always errors is worse than no button.
+    #[serde(default)]
+    pub automatable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,16 +132,22 @@ pub struct AuditEvent {
     pub session_id: String,
     pub pid: u32,
     pub actor: String,
+    /// Records written before the field rename are read via the alias, so an
+    /// existing log stays readable instead of being silently skipped.
+    #[serde(alias = "action")]
     pub action_type: String,
     pub package_type: Option<String>,
     pub risk_score: f32,
     pub approval_source: String,
     pub dry_run: bool,
     pub status: String,
+    #[serde(alias = "subject")]
     pub target: String,
     pub before: serde_json::Value,
     pub after: serde_json::Value,
     pub details: serde_json::Value,
+    /// Absent in pre-rename records.
+    #[serde(default)]
     pub impact_score: f32,
 }
 
@@ -168,4 +183,27 @@ pub struct ServiceRecord {
     pub enabled: bool,
     pub non_essential: bool,
     pub category: String, // e.g., "Networking", "Printing", "Telemetery"
+}
+
+/// A previewed set of cleanup targets awaiting user approval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupPlan {
+    pub targets: Vec<CleanupFinding>,
+    pub total_bytes: u64,
+    /// Fingerprint binding an approval to this exact target set.
+    pub token: String,
+}
+
+/// What a cleanup actually did, including anything it declined to touch.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CleanupOutcome {
+    pub reclaimed_bytes: u64,
+    pub purged: Vec<String>,
+    pub skipped: Vec<CleanupSkip>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupSkip {
+    pub path: String,
+    pub reason: String,
 }

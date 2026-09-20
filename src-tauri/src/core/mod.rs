@@ -5,5 +5,6 @@ pub mod optimizations;
 pub mod packages;
 pub mod plugins;
 pub mod policy;
+pub mod privilege;
 pub mod risk;
 pub mod utils;

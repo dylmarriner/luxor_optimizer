@@ -11,6 +11,7 @@ crate-type = ["lib", "cdylib"]
 
 [dependencies]
 anyhow = "1.0"
+luxor-helper = { path = "helper" }
 blake3 = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
