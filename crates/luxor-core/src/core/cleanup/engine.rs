@@ -186,6 +186,11 @@ impl CleanupEngine {
         }
     }
 
+    /// See [`plan_token`]; exposed here so callers need no hashing dependency.
+    pub fn plan_token_for(targets: &[CleanupFinding]) -> String {
+        plan_token(targets)
+    }
+
     /// Delete the contents of a finding's directory.
     ///
     /// Re-validates the finding rather than trusting the caller: a finding that
@@ -231,6 +236,24 @@ impl CleanupEngine {
         }
         Ok(())
     }
+}
+
+/// Fingerprint a set of cleanup targets.
+///
+/// Binds a user's approval to the exact set they were shown: if the scan moves
+/// between preview and apply, the token no longer matches and the deletion is
+/// refused rather than applied to a set nobody agreed to.
+pub fn plan_token(targets: &[CleanupFinding]) -> String {
+    let mut hasher = blake3::Hasher::new();
+    for finding in targets {
+        hasher.update(finding.id.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(finding.path.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(&finding.bytes.to_le_bytes());
+        hasher.update(b"\n");
+    }
+    hasher.finalize().to_hex().to_string()
 }
 
 fn dir_size(path: &PathBuf) -> Result<u64> {
