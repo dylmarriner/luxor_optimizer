@@ -123,3 +123,28 @@ fn audit_chain_verifies_clean_on_whatever_this_machine_has_logged() {
         result.broken_at.iter().take(3).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn exported_bundles_redact_usernames_when_policy_asks() {
+    use luxor_optimizer_lib::core::audit::AuditLogger;
+    use std::fs;
+
+    let dir = std::env::temp_dir().join(format!("luxor-export-{}", std::process::id()));
+    let logger = AuditLogger::new().expect("audit logger init");
+    logger.export_bundle(dir.clone(), true).expect("export should succeed");
+
+    let exported = fs::read_to_string(dir.join("audit-events.jsonl")).expect("exported log");
+    // The setting existed and was tested, but nothing called it, so every
+    // export leaked real home paths. Guard against that regressing.
+    assert!(
+        !exported.contains(&format!("/home/{}/", std::env::var("USER").unwrap_or_default()))
+            || std::env::var("USER").map(|u| u.is_empty()).unwrap_or(true),
+        "export still contains an unredacted home path"
+    );
+
+    let manifest = fs::read_to_string(dir.join("bundle-manifest.json")).expect("manifest");
+    assert!(manifest.contains("\"usernames_redacted\": true"));
+    assert!(manifest.contains("chain_verified"));
+
+    let _ = fs::remove_dir_all(&dir);
+}

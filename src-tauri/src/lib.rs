@@ -4,7 +4,7 @@ pub mod models;
 
 use commands::system::{
     analyze_audit_event, apply_optimization, apply_safe_cleanup, detect_system_profile,
-    export_audit_bundle, get_audit_events, get_dashboard_summary, list_plugins, list_services,
+    export_audit_bundle, get_audit_events, get_policy, get_dashboard_summary, list_plugins, list_services,
     preview_optimization, preview_safe_cleanup, preview_toggle_service, rollback_optimization,
     run_full_scan, toggle_plugin, toggle_service, verify_audit_chain,
 };
@@ -28,7 +28,8 @@ pub fn run() {
             list_plugins,
             toggle_plugin,
             analyze_audit_event,
-            verify_audit_chain
+            verify_audit_chain,
+            get_policy
         ])
         .run(tauri::generate_context!())
         .expect("failed to run luxor optimizer")

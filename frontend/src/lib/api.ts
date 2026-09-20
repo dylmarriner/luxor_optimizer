@@ -147,6 +147,22 @@ export interface ServiceRecord {
   category: string;
 }
 
+export interface PolicyConfig {
+  safe_mode_default: boolean;
+  protected_paths: string[];
+  protected_apps: string[];
+  user_appimage_paths: string[];
+  redact_usernames: boolean;
+  retention_days: number;
+  journald_mirror: boolean;
+  otel_export: boolean;
+}
+
+/** Read the policy actually in force. */
+export async function getPolicy(): Promise<PolicyConfig> {
+  return invoke('get_policy');
+}
+
 export interface PluginMetadata {
   id: string;
   name: string;

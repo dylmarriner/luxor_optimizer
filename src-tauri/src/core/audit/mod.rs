@@ -101,18 +101,40 @@ impl AuditLogger {
         anyhow::bail!("Event {} not found", event_id)
     }
 
-    pub fn export_bundle(&self, destination: PathBuf) -> Result<String> {
+    /// Copy the audit log to `destination`, redacting usernames when policy
+    /// asks for it, and record whether the chain verified at export time.
+    ///
+    /// The previous implementation copied the log verbatim. `redact_path`
+    /// existed and was tested but never called, so every export leaked
+    /// `/home/<username>/` paths despite `redact_usernames` defaulting to
+    /// true — the setting had no effect on the one operation that sends data
+    /// off the machine.
+    pub fn export_bundle(&self, destination: PathBuf, redact_usernames: bool) -> Result<String> {
         fs::create_dir_all(&destination)?;
         let src = self.event_log_path();
         let dst = destination.join("audit-events.jsonl");
-        fs::copy(&src, &dst).with_context(|| format!("copying {} -> {}", src.display(), dst.display()))?;
+
+        let contents = if src.exists() { fs::read_to_string(&src)? } else { String::new() };
+        let exported = if redact_usernames {
+            crate::core::utils::redact_path(&contents, true)
+        } else {
+            contents
+        };
+        fs::write(&dst, &exported)
+            .with_context(|| format!("writing {}", dst.display()))?;
+
+        let verification = self.verify_chain()?;
         let manifest = destination.join("bundle-manifest.json");
         fs::write(
             &manifest,
             serde_json::to_vec_pretty(&json!({
                 "bundle_generated_at": Utc::now().to_rfc3339(),
                 "source": src,
-                "integrity_status": "unsigned-local-export"
+                "integrity_status": "unsigned-local-export",
+                "usernames_redacted": redact_usernames,
+                "chain_verified": verification.intact,
+                "events_checked": verification.events_checked,
+                "legacy_unverifiable": verification.legacy_unverifiable,
             }))?,
         )?;
         Ok(destination.display().to_string())

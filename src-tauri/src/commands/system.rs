@@ -83,8 +83,21 @@ pub fn run_full_scan() -> Result<ScanResult, String> {
 
 #[command]
 pub fn export_audit_bundle(destination: String) -> Result<String, String> {
+    let policy = PolicyEngine::default_policy();
     let audit = AuditLogger::new().map_err(|e| e.to_string())?;
-    audit.export_bundle(destination.into()).map_err(|e| e.to_string())
+    audit
+        .export_bundle(destination.into(), policy.config().redact_usernames)
+        .map_err(|e| e.to_string())
+}
+
+/// The policy currently in force.
+///
+/// The Settings page previously rendered unbound checkboxes that defaulted to
+/// looking enabled regardless of the real configuration. This lets it show
+/// what is actually set.
+#[command]
+pub fn get_policy() -> Result<crate::models::PolicyConfig, String> {
+    Ok(PolicyEngine::default_policy().config().clone())
 }
 
 /// The exact privileged changes an optimization would make, validated against
