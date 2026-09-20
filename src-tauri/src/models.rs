@@ -169,3 +169,26 @@ pub struct ServiceRecord {
     pub non_essential: bool,
     pub category: String, // e.g., "Networking", "Printing", "Telemetery"
 }
+
+/// A previewed set of cleanup targets awaiting user approval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupPlan {
+    pub targets: Vec<CleanupFinding>,
+    pub total_bytes: u64,
+    /// Fingerprint binding an approval to this exact target set.
+    pub token: String,
+}
+
+/// What a cleanup actually did, including anything it declined to touch.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CleanupOutcome {
+    pub reclaimed_bytes: u64,
+    pub purged: Vec<String>,
+    pub skipped: Vec<CleanupSkip>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupSkip {
+    pub path: String,
+    pub reason: String,
+}

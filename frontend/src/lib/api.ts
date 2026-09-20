@@ -30,13 +30,20 @@ export interface SystemProfile {
   services: string[];
 }
 
+export type PackageSource = 'Native' | 'Flatpak' | 'Snap' | 'AppImage';
+
+/** Mirrors `models::PackageRecord`. Keep field names in sync with the Rust side. */
 export interface Package {
   name: string;
-  version: string;
-  source: 'Native' | 'Flatpak' | 'Snap' | 'AppImage';
-  description?: string;
-  size_bytes?: number;
-  installed_at?: string;
+  source: PackageSource;
+  installed_size_bytes: number;
+  criticality: string;
+  last_used_days_ago?: number;
+  install_age_days?: number;
+  removal_preview: string[];
+  rationale: string[];
+  risk_score: number;
+  metadata: Record<string, string>;
 }
 
 export interface PackageCounts {
@@ -46,13 +53,36 @@ export interface PackageCounts {
   appimage: number;
 }
 
+export type CleanupDisposition = 'SafeAuto' | 'Review' | 'NeverAuto';
+
+/** Mirrors `models::CleanupFinding`. */
 export interface CleanupFinding {
   id: string;
-  category: string;
+  label: string;
   path: string;
   bytes: number;
-  disposition: 'SafeAuto' | 'ReviewRequired' | 'Dangerous';
-  description: string;
+  disposition: CleanupDisposition;
+  rationale: string;
+  destructive: boolean;
+  rollback_kind: string | null;
+}
+
+/** A previewed cleanup awaiting approval. `token` binds approval to this set. */
+export interface CleanupPlan {
+  targets: CleanupFinding[];
+  total_bytes: number;
+  token: string;
+}
+
+export interface CleanupSkip {
+  path: string;
+  reason: string;
+}
+
+export interface CleanupOutcome {
+  reclaimed_bytes: number;
+  purged: string[];
+  skipped: CleanupSkip[];
 }
 
 export interface OptimizationRecommendation {
@@ -137,12 +167,30 @@ export async function runFullScan(): Promise<ScanResult> {
   return invoke('run_full_scan');
 }
 
+/** Validate an optimization against the live system without applying it. */
+export async function previewOptimization(id: string): Promise<string[]> {
+  return invoke('preview_optimization', { id });
+}
+
 export async function applyOptimization(id: string): Promise<void> {
   return invoke('apply_optimization', { id });
 }
 
-export async function applySafeCleanup(): Promise<number> {
-  return invoke('apply_safe_cleanup');
+/** Show exactly what would be deleted. Changes nothing. */
+export async function previewSafeCleanup(): Promise<CleanupPlan> {
+  return invoke('preview_safe_cleanup');
+}
+
+/**
+ * Execute a previewed cleanup. `token` must come from the plan the user
+ * approved; a stale token is refused rather than applied to a different set.
+ */
+export async function applySafeCleanup(token: string): Promise<CleanupOutcome> {
+  return invoke('apply_safe_cleanup', { token });
+}
+
+export async function exportAuditBundle(destination: string): Promise<string> {
+  return invoke('export_audit_bundle', { destination });
 }
 
 export async function getAuditEvents(): Promise<AuditEvent[]> {
@@ -155,6 +203,11 @@ export async function rollbackOptimization(eventId: string): Promise<void> {
 
 export async function listServices(): Promise<ServiceRecord[]> {
   return invoke('list_services');
+}
+
+/** Describe what toggling a service would do, without doing it. */
+export async function previewToggleService(name: string, enable: boolean): Promise<string> {
+  return invoke('preview_toggle_service', { name, enable });
 }
 
 export async function toggleService(name: string, enable: boolean): Promise<void> {

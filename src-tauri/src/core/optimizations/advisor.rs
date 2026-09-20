@@ -1,20 +1,21 @@
-use crate::core::policy::PolicyEngine;
 use crate::core::audit::AuditLogger;
-use crate::models::{OptimizationRecommendation, SystemProfile, AuditEvent};
-use anyhow::{bail, Context, Result};
-use std::process::Command;
-use std::env;
-use std::fs;
+use crate::core::policy::PolicyEngine;
+use crate::core::privilege::PrivilegeBroker;
+use crate::models::{AuditEvent, OptimizationRecommendation, SystemProfile};
+use anyhow::{bail, Result};
+use luxor_helper::action::{Governor, PrivilegedAction, SysctlKey, SysctlValue};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
 pub struct OptimizationAdvisor {
+    #[allow(dead_code)] // consulted once per-optimization exclusions land
     policy: PolicyEngine,
+    broker: PrivilegeBroker,
 }
 
 impl OptimizationAdvisor {
     pub fn new(policy: PolicyEngine) -> Self {
-        Self { policy }
+        Self { policy, broker: PrivilegeBroker::new() }
     }
 
     pub fn recommend(&self, profile: &SystemProfile) -> Result<Vec<OptimizationRecommendation>> {
@@ -112,103 +113,164 @@ impl OptimizationAdvisor {
         Ok(out)
     }
 
+    /// Apply an optimization by running each of its actions through the
+    /// privilege broker, recording one audit event per action.
+    ///
+    /// The helper re-reads the system after each change, so the before/after
+    /// pair in the audit log is observed state rather than intended state.
     pub fn apply(&self, id: &str, logger: &AuditLogger) -> Result<()> {
-        match id {
-            "swappiness-tuning" => {
-                let before = self.get_sysctl("vm.swappiness").unwrap_or_else(|_| "60".to_string());
-                self.run_privileged("set-swappiness", "sysctl", vec!["-w".to_string(), "vm.swappiness=10".to_string()])?;
-                let after = self.get_sysctl("vm.swappiness").unwrap_or_else(|_| "10".to_string());
-                logger.record_event("apply-optimization", id, json!(before), json!(after), json!({"key": "vm.swappiness"}), 0.08, 0.5)?;
-                Ok(())
-            },
-            "cpu-pstate-governor" => {
-                let before = self.get_governor().unwrap_or_else(|_| "unknown".to_string());
-                self.run_privileged("set-governor", "cpupower", vec!["frequency-set".to_string(), "-g".to_string(), "performance".to_string()])?;
-                let after = self.get_governor().unwrap_or_else(|_| "performance".to_string());
-                logger.record_event("apply-optimization", id, json!(before), json!(after), json!({"tool": "cpupower"}), 0.15, 0.8)?;
-                Ok(())
-            },
-            "low-ram-zram" => {
-                self.run_privileged("install-zram", "apt", vec!["install".to_string(), "-y".to_string(), "zram-generator".to_string()])?;
-                logger.record_event("apply-optimization", id, json!("uninstalled"), json!("installed"), json!({"pkg": "zram-generator"}), 0.24, 0.9)?;
-                Ok(())
-            },
-            "startup-service-review" => {
-                let before = self.is_service_enabled("bluetooth.service").unwrap_or(true);
-                self.run_privileged("disable-bluetooth", "systemctl", vec!["disable".to_string(), "bluetooth.service".to_string()])?;
-                let after = self.is_service_enabled("bluetooth.service").unwrap_or(false);
-                logger.record_event("apply-optimization", id, json!(before), json!(after), json!({"service": "bluetooth.service"}), 0.48, 0.3)?;
-                Ok(())
-            },
-            _ => bail!("Optimization {} not yet implementable or requires manual steps", id),
+        let actions = self.actions_for(id)?;
+        let risk = self.risk_for(id);
+
+        for action in actions {
+            let response = self.broker.apply(&action)?;
+            logger.record_event(
+                "apply-optimization",
+                id,
+                json!(response.before),
+                json!(response.after),
+                json!({
+                    "action": action.kind(),
+                    "effect": response.effect,
+                    "persistent": action.is_persistent(),
+                }),
+                risk,
+                0.5,
+            )?;
         }
-    }
-
-    pub fn rollback(&self, event: &AuditEvent, _logger: &AuditLogger) -> Result<()> {
-        match event.target.as_str() {
-            "swappiness-tuning" => {
-                let old_val = event.before.as_str().context("invalid before state")?;
-                self.run_privileged("rollback-swappiness", "sysctl", vec!["-w".to_string(), format!("vm.swappiness={}", old_val)])
-            },
-            "cpu-pstate-governor" => {
-                let old_gov = event.before.as_str().context("invalid before state")?;
-                self.run_privileged("rollback-governor", "cpupower", vec!["frequency-set".to_string(), "-g".to_string(), old_gov.to_string()])
-            },
-            "startup-service-review" => {
-                let was_enabled = event.before.as_bool().context("invalid before state")?;
-                if was_enabled {
-                    self.run_privileged("enable-bluetooth", "systemctl", vec!["enable".to_string(), "bluetooth.service".to_string()])
-                } else {
-                    Ok(()) // already disabled?
-                }
-            },
-            _ => bail!("Rollback for {} not implemented", event.target),
-        }
-    }
-
-    fn get_sysctl(&self, key: &str) -> Result<String> {
-        let path = format!("/proc/sys/{}", key.replace('.', "/"));
-        fs::read_to_string(path).map(|s| s.trim().to_string()).context("failed to read sysctl")
-    }
-
-    fn get_governor(&self) -> Result<String> {
-        fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
-            .map(|s| s.trim().to_string())
-            .context("failed to read governor")
-    }
-
-    fn is_service_enabled(&self, service: &str) -> Result<bool> {
-        let output = Command::new("systemctl")
-            .arg("is-enabled")
-            .arg(service)
-            .output()?;
-        Ok(output.status.success())
-    }
-
-    fn run_privileged(&self, action: &str, command: &str, args: Vec<String>) -> Result<()> {
-        let helper_path = env::current_exe()?
-            .parent()
-            .context("no bin dir")?
-            .join("luxor-helper");
-        
-        let payload = serde_json::json!({
-            "action": action,
-            "command": command,
-            "args": args,
-            "dry_run": false
-        });
-
-        let output = Command::new("pkexec")
-            .arg(helper_path)
-            .arg(payload.to_string())
-            .output()
-            .context("failed to execute pkexec helper")?;
-
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            bail!("Privileged action failed: {}", err);
-        }
-
         Ok(())
+    }
+
+    /// Reverse a previously applied optimization using the state recorded at
+    /// apply time, and log the reversal as its own audited event.
+    pub fn rollback(&self, event: &AuditEvent, logger: &AuditLogger) -> Result<()> {
+        let action = self.inverse_action(event)?;
+        let response = self.broker.apply(&action)?;
+        logger.record_event(
+            "rollback-optimization",
+            &event.target,
+            json!(response.before),
+            json!(response.after),
+            json!({
+                "action": action.kind(),
+                "effect": response.effect,
+                "reverses_event": event.event_id,
+            }),
+            self.risk_for(&event.target),
+            0.5,
+        )?;
+        Ok(())
+    }
+
+    /// Build the action that undoes `event`, using the value captured before
+    /// the original change.
+    fn inverse_action(&self, event: &AuditEvent) -> Result<PrivilegedAction> {
+        let recorded = event
+            .before
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| event.before.as_u64().map(|n| n.to_string()));
+
+        match event.target.as_str() {
+            "swappiness-tuning" => self.restore_sysctl(SysctlKey::VmSwappiness, recorded),
+            "vfs-cache-pressure" => self.restore_sysctl(SysctlKey::VmVfsCachePressure, recorded),
+            "inotify-watch-limit" => {
+                self.restore_sysctl(SysctlKey::FsInotifyMaxUserWatches, recorded)
+            }
+            "cpu-pstate-governor" => {
+                let governor = match recorded.as_deref() {
+                    Some("performance") => Governor::Performance,
+                    Some("powersave") => Governor::Powersave,
+                    Some("schedutil") => Governor::Schedutil,
+                    Some("ondemand") => Governor::Ondemand,
+                    Some("conservative") => Governor::Conservative,
+                    other => bail!(
+                        "cannot roll back to unrecognised governor {:?}; set one manually",
+                        other.unwrap_or("<unrecorded>")
+                    ),
+                };
+                Ok(PrivilegedAction::SetCpuGovernor { governor })
+            }
+            other => bail!("Rollback for {other} is not implemented"),
+        }
+    }
+
+    fn restore_sysctl(&self, key: SysctlKey, recorded: Option<String>) -> Result<PrivilegedAction> {
+        let Some(raw) = recorded else {
+            bail!("audit event for {} has no recorded prior value", key.name());
+        };
+        // A drop-in that was absent before should go back to absent, not to a
+        // guessed default.
+        if raw == "<not persisted>" {
+            return Ok(PrivilegedAction::ClearPersistedSysctl { key });
+        }
+        let parsed: u64 = raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("recorded value {raw:?} for {} is not a number", key.name()))?;
+        Ok(PrivilegedAction::SetSysctl { key, value: SysctlValue::parse(key, parsed)? })
+    }
+
+    /// Risk weighting carried into the audit record for an optimization.
+    fn risk_for(&self, id: &str) -> f32 {
+        match id {
+            "swappiness-tuning" => 0.08,
+            "vfs-cache-pressure" => 0.10,
+            "inotify-watch-limit" => 0.06,
+            "cpu-pstate-governor" => 0.15,
+            _ => 0.30,
+        }
+    }
+
+    /// Describe what applying an optimization would do, without doing it.
+    ///
+    /// The description comes from the helper validating the real action against
+    /// the real machine, so it cannot drift from what `apply` goes on to run.
+    pub fn preview(&self, id: &str) -> Result<Vec<String>> {
+        self.actions_for(id)?
+            .iter()
+            .map(|action| {
+                self.broker
+                    .preview(action)
+                    .map(|response| match response.before {
+                        Some(before) => format!("{} (currently {})", response.effect, before),
+                        None => response.effect,
+                    })
+            })
+            .collect()
+    }
+
+    /// The exact privileged actions an optimization performs.
+    ///
+    /// `apply` and `preview` both route through this, so the preview a user
+    /// approves is by construction the work that runs.
+    fn actions_for(&self, id: &str) -> Result<Vec<PrivilegedAction>> {
+        let actions = match id {
+            "swappiness-tuning" => {
+                let value = SysctlValue::parse(SysctlKey::VmSwappiness, 10)?;
+                vec![
+                    PrivilegedAction::SetSysctl { key: SysctlKey::VmSwappiness, value },
+                    PrivilegedAction::PersistSysctl { key: SysctlKey::VmSwappiness, value },
+                ]
+            }
+            "cpu-pstate-governor" => {
+                vec![PrivilegedAction::SetCpuGovernor { governor: Governor::Performance }]
+            }
+            "vfs-cache-pressure" => {
+                let value = SysctlValue::parse(SysctlKey::VmVfsCachePressure, 50)?;
+                vec![
+                    PrivilegedAction::SetSysctl { key: SysctlKey::VmVfsCachePressure, value },
+                    PrivilegedAction::PersistSysctl { key: SysctlKey::VmVfsCachePressure, value },
+                ]
+            }
+            "inotify-watch-limit" => {
+                let value = SysctlValue::parse(SysctlKey::FsInotifyMaxUserWatches, 524_288)?;
+                vec![
+                    PrivilegedAction::SetSysctl { key: SysctlKey::FsInotifyMaxUserWatches, value },
+                    PrivilegedAction::PersistSysctl { key: SysctlKey::FsInotifyMaxUserWatches, value },
+                ]
+            }
+            _ => bail!("Optimization {id} has no automated apply path"),
+        };
+        Ok(actions)
     }
 }
