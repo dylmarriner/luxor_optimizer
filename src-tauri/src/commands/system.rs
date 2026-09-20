@@ -1,4 +1,4 @@
-use crate::core::{
+use luxor_core::core::{
     audit::AuditLogger,
     cleanup::engine::CleanupEngine,
     detect::{services::ServiceAuditor, system::SystemDetector},
@@ -8,8 +8,8 @@ use crate::core::{
     policy::PolicyEngine,
     privilege::PrivilegeBroker,
 };
-use luxor_helper::action::{PrivilegedAction, UnitName};
-use crate::models::{
+use luxor_ipc::{PrivilegedAction, UnitName};
+use luxor_core::models::{
     CleanupOutcome, CleanupPlan, CleanupSkip, DashboardSummary, ScanResult, SystemProfile,
 };
 use tauri::command;
@@ -36,17 +36,17 @@ pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {
     let reclaimable_bytes = findings.iter().map(|f| f.bytes).sum();
     let safe_actions = findings
         .iter()
-        .filter(|f| matches!(f.disposition, crate::models::CleanupDisposition::SafeAuto))
+        .filter(|f| matches!(f.disposition, luxor_core::models::CleanupDisposition::SafeAuto))
         .count();
     let review_actions = findings.len().saturating_sub(safe_actions);
 
-    let mut counts = crate::models::PackageCounts::default();
+    let mut counts = luxor_core::models::PackageCounts::default();
     for pkg in &packages {
         match pkg.source {
-            crate::models::PackageSource::Native => counts.native += 1,
-            crate::models::PackageSource::Flatpak => counts.flatpak += 1,
-            crate::models::PackageSource::Snap => counts.snap += 1,
-            crate::models::PackageSource::AppImage => counts.appimage += 1,
+            luxor_core::models::PackageSource::Native => counts.native += 1,
+            luxor_core::models::PackageSource::Flatpak => counts.flatpak += 1,
+            luxor_core::models::PackageSource::Snap => counts.snap += 1,
+            luxor_core::models::PackageSource::AppImage => counts.appimage += 1,
         }
     }
 
@@ -96,7 +96,7 @@ pub fn export_audit_bundle(destination: String) -> Result<String, String> {
 /// looking enabled regardless of the real configuration. This lets it show
 /// what is actually set.
 #[command]
-pub fn get_policy() -> Result<crate::models::PolicyConfig, String> {
+pub fn get_policy() -> Result<luxor_core::models::PolicyConfig, String> {
     Ok(PolicyEngine::default_policy().config().clone())
 }
 
@@ -117,7 +117,7 @@ pub fn apply_optimization(id: String) -> Result<(), String> {
 }
 
 #[command]
-pub fn get_audit_events() -> Result<Vec<crate::models::AuditEvent>, String> {
+pub fn get_audit_events() -> Result<Vec<luxor_core::models::AuditEvent>, String> {
     let audit = AuditLogger::new().map_err(|e| e.to_string())?;
     audit.get_events().map_err(|e| e.to_string())
 }
@@ -142,16 +142,16 @@ pub fn preview_safe_cleanup() -> Result<CleanupPlan, String> {
     let profile = detector.detect().map_err(|e| e.to_string())?;
     let cleanup = CleanupEngine::new(policy);
 
-    let targets: Vec<crate::models::CleanupFinding> = cleanup
+    let targets: Vec<luxor_core::models::CleanupFinding> = cleanup
         .scan(&profile)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|f| matches!(f.disposition, crate::models::CleanupDisposition::SafeAuto))
+        .filter(|f| matches!(f.disposition, luxor_core::models::CleanupDisposition::SafeAuto))
         .collect();
 
     Ok(CleanupPlan {
         total_bytes: targets.iter().map(|f| f.bytes).sum(),
-        token: plan_token(&targets),
+        token: CleanupEngine::plan_token_for(&targets),
         targets,
     })
 }
@@ -169,14 +169,14 @@ pub fn apply_safe_cleanup(token: String) -> Result<CleanupOutcome, String> {
     let cleanup = CleanupEngine::new(policy);
     let audit = AuditLogger::new().map_err(|e| e.to_string())?;
 
-    let targets: Vec<crate::models::CleanupFinding> = cleanup
+    let targets: Vec<luxor_core::models::CleanupFinding> = cleanup
         .scan(&profile)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|f| matches!(f.disposition, crate::models::CleanupDisposition::SafeAuto))
+        .filter(|f| matches!(f.disposition, luxor_core::models::CleanupDisposition::SafeAuto))
         .collect();
 
-    if plan_token(&targets) != token {
+    if CleanupEngine::plan_token_for(&targets) != token {
         return Err(
             "the system changed since this plan was previewed; re-run the preview and approve again"
                 .to_string(),
@@ -221,25 +221,8 @@ pub fn apply_safe_cleanup(token: String) -> Result<CleanupOutcome, String> {
     Ok(outcome)
 }
 
-/// Fingerprint of a plan's targets and their sizes.
-///
-/// Binds an approval to the exact set previewed, so a plan cannot be approved
-/// and then silently widened before it runs.
-fn plan_token(targets: &[crate::models::CleanupFinding]) -> String {
-    let mut hasher = blake3::Hasher::new();
-    for finding in targets {
-        hasher.update(finding.id.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(finding.path.as_bytes());
-        hasher.update(b"\0");
-        hasher.update(&finding.bytes.to_le_bytes());
-        hasher.update(b"\n");
-    }
-    hasher.finalize().to_hex().to_string()
-}
-
 #[command]
-pub fn list_services() -> Result<Vec<crate::models::ServiceRecord>, String> {
+pub fn list_services() -> Result<Vec<luxor_core::models::ServiceRecord>, String> {
     let auditor = ServiceAuditor;
     auditor.scan().map_err(|e| e.to_string())
 }
@@ -288,33 +271,17 @@ pub fn toggle_service(name: String, enable: bool) -> Result<(), String> {
 }
 
 #[command]
-pub fn list_plugins() -> Result<Vec<crate::models::PluginMetadata>, String> {
+pub fn list_plugins() -> Result<Vec<luxor_core::models::PluginMetadata>, String> {
     let engine = PluginEngine::new().map_err(|e| e.to_string())?;
     engine.list_plugins().map_err(|e| e.to_string())
 }
 
 #[command]
 pub fn toggle_plugin(id: String, enable: bool) -> Result<(), String> {
-    let plugin_dir = dirs::config_dir()
-        .ok_or("no config dir")?
-        .join("luxor")
-        .join("plugins")
-        .join(&id);
-    
-    let manifest_path = plugin_dir.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err("Plugin manifest not found".to_string());
-    }
-
-    let content = std::fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
-    let mut meta: crate::models::PluginMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    
-    meta.enabled = enable;
-    
-    let updated_content = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
-    std::fs::write(manifest_path, updated_content).map_err(|e| e.to_string())?;
-
-    Ok(())
+    PluginEngine::new()
+        .map_err(|e| e.to_string())?
+        .set_enabled(&id, enable)
+        .map_err(|e| e.to_string())
 }
 
 /// Explain one audit event from the record itself, and state whether the
@@ -385,7 +352,7 @@ pub fn analyze_audit_event(event_id: String) -> Result<String, String> {
 
 /// Verify the whole audit chain without reference to a single event.
 #[command]
-pub fn verify_audit_chain() -> Result<crate::core::audit::ChainVerification, String> {
+pub fn verify_audit_chain() -> Result<luxor_core::core::audit::ChainVerification, String> {
     let audit = AuditLogger::new().map_err(|e| e.to_string())?;
     audit.verify_chain().map_err(|e| e.to_string())
 }

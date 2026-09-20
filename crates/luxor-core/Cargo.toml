@@ -1,0 +1,23 @@
+[package]
+name = "luxor-core"
+description = "Detection, policy, cleanup, audit and privilege brokering for Luxor Optimizer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# No Tauri, no UI. This crate is what the CLI and the desktop app both build on.
+
+[dependencies]
+luxor-ipc.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+hostname.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sysinfo.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
+which.workspace = true

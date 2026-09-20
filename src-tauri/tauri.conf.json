@@ -36,7 +36,7 @@
       }
     },
     "externalBin": [
-      "helper/target/release/luxor-helper"
+      "binaries/luxor-helper"
     ],
     "icon": [
       "icons/icon.png"

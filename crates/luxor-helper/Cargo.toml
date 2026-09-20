@@ -1,0 +1,23 @@
+[package]
+name = "luxor-helper"
+description = "Root-privileged helper for Luxor Optimizer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Deliberately minimal. This binary runs as root, so its dependency surface is
+# kept to the action contract plus what executing those actions requires.
+
+[lib]
+name = "luxor_helper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "luxor-helper"
+path = "src/main.rs"
+
+[dependencies]
+luxor-ipc.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

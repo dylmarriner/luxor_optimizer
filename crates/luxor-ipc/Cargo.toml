@@ -1,0 +1,10 @@
+[package]
+name = "luxor-ipc"
+description = "Privileged action contract shared by the Luxor core and its root helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

@@ -3,6 +3,7 @@ pub mod cleanup;
 pub mod detect;
 pub mod optimizations;
 pub mod packages;
+pub mod platform;
 pub mod plugins;
 pub mod policy;
 pub mod privilege;

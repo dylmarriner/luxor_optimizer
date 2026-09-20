@@ -1,11 +1,11 @@
-use luxor_optimizer_lib::core::{
+use luxor_core::core::{
     cleanup::engine::CleanupEngine,
     detect::system::SystemDetector,
     policy::{PolicyEngine, Refusal},
     risk::score_package_risk,
     utils::redact_path,
 };
-use luxor_optimizer_lib::models::{CleanupDisposition, CleanupFinding};
+use luxor_core::models::{CleanupDisposition, CleanupFinding};
 
 fn finding(path: &str, disposition: CleanupDisposition) -> CleanupFinding {
     CleanupFinding {
@@ -113,7 +113,7 @@ fn unknown_package_size_scores_lower_than_a_large_known_one() {
 
 #[test]
 fn audit_chain_verifies_clean_on_whatever_this_machine_has_logged() {
-    use luxor_optimizer_lib::core::audit::AuditLogger;
+    use luxor_core::core::audit::AuditLogger;
     let logger = AuditLogger::new().expect("audit logger init");
     let result = logger.verify_chain().expect("verification should run");
     assert!(
@@ -126,7 +126,7 @@ fn audit_chain_verifies_clean_on_whatever_this_machine_has_logged() {
 
 #[test]
 fn exported_bundles_redact_usernames_when_policy_asks() {
-    use luxor_optimizer_lib::core::audit::AuditLogger;
+    use luxor_core::core::audit::AuditLogger;
     use std::fs;
 
     let dir = std::env::temp_dir().join(format!("luxor-export-{}", std::process::id()));

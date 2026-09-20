@@ -1,4 +1,4 @@
-//! The privileged action contract.
+//! The privileged action contract shared by the Luxor core and the root helper.
 //!
 //! This is the trust boundary between the unprivileged UI/CLI and the root
 //! helper. The caller names an *action*, never a command. Every parameter is a
