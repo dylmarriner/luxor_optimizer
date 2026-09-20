@@ -31,6 +31,7 @@ impl OptimizationAdvisor {
                 reversible: true,
                 requires_root: true,
                 risk_score: 0.24,
+                automatable: false,
             });
         }
 
@@ -44,6 +45,7 @@ impl OptimizationAdvisor {
                 reversible: true,
                 requires_root: false,
                 risk_score: 0.11,
+                automatable: false,
             });
         }
 
@@ -57,6 +59,7 @@ impl OptimizationAdvisor {
                 reversible: false,
                 requires_root: false,
                 risk_score: 0.04,
+                automatable: false,
             });
         }
 
@@ -70,6 +73,7 @@ impl OptimizationAdvisor {
                 reversible: true,
                 requires_root: true,
                 risk_score: 0.48,
+                automatable: false,
             });
         }
 
@@ -83,6 +87,7 @@ impl OptimizationAdvisor {
                 reversible: true,
                 requires_root: true,
                 risk_score: 0.15,
+                automatable: true,
             });
         }
 
@@ -96,6 +101,7 @@ impl OptimizationAdvisor {
                 reversible: true,
                 requires_root: true,
                 risk_score: 0.32,
+                automatable: false,
             });
         }
 
@@ -108,6 +114,40 @@ impl OptimizationAdvisor {
             reversible: true,
             requires_root: true,
             risk_score: 0.08,
+                automatable: true,
+        });
+
+        // Responsiveness knobs that are cheap, bounded, and fully reversible
+        // via the drop-in. These have real apply paths, unlike the advisory
+        // entries above.
+        out.push(OptimizationRecommendation {
+            id: "vfs-cache-pressure".to_string(),
+            title: "Retain directory and inode caches longer".to_string(),
+            profile: "general".to_string(),
+            rationale: "The default of 100 reclaims dentry and inode caches as eagerly as page cache. Halving it keeps filesystem metadata warm, which is what most desktop 'feels slow' complaints actually are.".to_string(),
+            command_preview: vec![
+                "set vm.vfs_cache_pressure to 50".to_string(),
+                format!("persist in {}", luxor_helper::action::DROP_IN_PATH),
+            ],
+            reversible: true,
+            requires_root: true,
+            risk_score: 0.10,
+            automatable: true,
+        });
+
+        out.push(OptimizationRecommendation {
+            id: "inotify-watch-limit".to_string(),
+            title: "Raise the inotify watch limit".to_string(),
+            profile: "developer".to_string(),
+            rationale: "The 8192 default is exhausted by editors, file syncers and dev servers on large trees, which surfaces as silent failures to notice file changes rather than as an obvious error.".to_string(),
+            command_preview: vec![
+                "set fs.inotify.max_user_watches to 524288".to_string(),
+                format!("persist in {}", luxor_helper::action::DROP_IN_PATH),
+            ],
+            reversible: true,
+            requires_root: true,
+            risk_score: 0.06,
+            automatable: true,
         });
 
         Ok(out)

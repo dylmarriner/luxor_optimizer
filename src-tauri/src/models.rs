@@ -101,6 +101,13 @@ pub struct OptimizationRecommendation {
     pub reversible: bool,
     pub requires_root: bool,
     pub risk_score: f32,
+    /// Whether Luxor can carry this out itself.
+    ///
+    /// False means advisory-only: the recommendation explains what to do, but
+    /// there is no apply path. The UI must not offer an Apply button for these,
+    /// because a button that always errors is worse than no button.
+    #[serde(default)]
+    pub automatable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

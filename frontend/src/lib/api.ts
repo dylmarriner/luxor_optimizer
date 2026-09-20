@@ -94,6 +94,8 @@ export interface OptimizationRecommendation {
   reversible: boolean;
   requires_root: boolean;
   risk_score: number;
+  /** False means advisory-only: explain it, but do not offer an Apply button. */
+  automatable: boolean;
 }
 
 export interface DashboardSummary {
