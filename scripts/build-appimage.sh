@@ -10,11 +10,9 @@ npm ci
 echo "[2/4] Building frontend"
 npm run build
 
-echo "[3/4] Building helper"
-(
-  cd src-tauri/helper
-  cargo build --release
-)
+echo "[3/4] Building and staging helper"
+cargo build --release -p luxor-helper
+./scripts/stage-helper.sh
 
 echo "[4/4] Building Tauri AppImage"
 (

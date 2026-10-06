@@ -1,8 +1,9 @@
 node_modules/
 dist/
 frontend/dist/
+# Workspace build output moved to the repo root when the crates were split.
+target/
 src-tauri/target/
-src-tauri/helper/target/
 *.AppImage
 *.zsync
 *.tar.gz
@@ -11,3 +12,4 @@ src-tauri/helper/target/
 *.sha256
 .DS_Store
 .serena/
+src-tauri/Cargo.lock

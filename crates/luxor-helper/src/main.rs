@@ -5,7 +5,7 @@
 //! so that action parameters are not exposed in `/proc/<pid>/cmdline` to other
 //! users on the machine.
 
-use luxor_helper::action::{HelperRequest, HelperResponse, Status};
+use luxor_ipc::{HelperRequest, HelperResponse, Status};
 use luxor_helper::execute::execute;
 use std::io::{self, Read, Write};
 use std::process::ExitCode;

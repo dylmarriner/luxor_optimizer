@@ -4,7 +4,7 @@
 //! narrow: perform the change, then re-read the system to report what actually
 //! happened rather than what was requested.
 
-use crate::action::{
+use luxor_ipc::{
     CacheTarget, Governor, HelperResponse, PrivilegedAction, Status, SysctlKey, SysctlValue,
     UnitName, DROP_IN_PATH,
 };
@@ -289,7 +289,7 @@ fn dir_size(path: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::SysctlKey;
+    use luxor_ipc::SysctlKey;
 
     #[test]
     fn dry_run_reports_without_acting() {

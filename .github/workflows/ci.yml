@@ -17,17 +17,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+      # One workspace now, so the helper crate's tests are no longer a
+      # separate invocation that was easy to forget.
       - name: Run tests
-        working-directory: src-tauri
-        run: cargo test --all-targets
-
-      - name: Run helper tests
-        working-directory: src-tauri/helper
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets
 
       - name: Check formatting
-        working-directory: src-tauri
-        run: cargo fmt --check || echo "::warning::rustfmt differences present"
+        run: cargo fmt --all --check || echo "::warning::rustfmt differences present"
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings || echo "::warning::clippy findings present"
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -54,4 +53,6 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
       - run: npm ci
+      - run: cargo build --release -p luxor-helper
+      - run: ./scripts/stage-helper.sh
       - run: ./scripts/build-appimage.sh

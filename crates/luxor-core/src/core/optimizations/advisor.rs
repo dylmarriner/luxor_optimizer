@@ -3,7 +3,7 @@ use crate::core::policy::PolicyEngine;
 use crate::core::privilege::PrivilegeBroker;
 use crate::models::{AuditEvent, OptimizationRecommendation, SystemProfile};
 use anyhow::{bail, Result};
-use luxor_helper::action::{Governor, PrivilegedAction, SysctlKey, SysctlValue};
+use luxor_ipc::{Governor, PrivilegedAction, SysctlKey, SysctlValue};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
@@ -127,7 +127,7 @@ impl OptimizationAdvisor {
             rationale: "The default of 100 reclaims dentry and inode caches as eagerly as page cache. Halving it keeps filesystem metadata warm, which is what most desktop 'feels slow' complaints actually are.".to_string(),
             command_preview: vec![
                 "set vm.vfs_cache_pressure to 50".to_string(),
-                format!("persist in {}", luxor_helper::action::DROP_IN_PATH),
+                format!("persist in {}", luxor_ipc::DROP_IN_PATH),
             ],
             reversible: true,
             requires_root: true,
@@ -142,7 +142,7 @@ impl OptimizationAdvisor {
             rationale: "The 8192 default is exhausted by editors, file syncers and dev servers on large trees, which surfaces as silent failures to notice file changes rather than as an obvious error.".to_string(),
             command_preview: vec![
                 "set fs.inotify.max_user_watches to 524288".to_string(),
-                format!("persist in {}", luxor_helper::action::DROP_IN_PATH),
+                format!("persist in {}", luxor_ipc::DROP_IN_PATH),
             ],
             reversible: true,
             requires_root: true,

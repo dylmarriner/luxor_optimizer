@@ -4,26 +4,52 @@ Linux desktop optimizer. Tauri 2 + React frontend → Rust core → `pkexec` hel
 Target is cross-platform (Linux full, Windows partial, macOS shallow) with a CLI,
 but today it is Linux-only and desktop-only.
 
+## Layout
+
+One cargo workspace at the repo root.
+
+| Crate | Role |
+|---|---|
+| `crates/luxor-ipc` | Privileged action contract. Shared by core and helper; deliberately tiny. |
+| `crates/luxor-helper` | Root binary. Depends on `luxor-ipc` only — its dependency surface is kept minimal because it runs as root. |
+| `crates/luxor-core` | All logic. No Tauri, no UI. |
+| `crates/luxor-cli` | `luxor` binary. Thin wrapper over core. |
+| `src-tauri` | Tauri shell. Command wiring only. |
+
+Logic does not live in `src-tauri` or `luxor-cli`. If a command needs a
+dependency the shell lacks, that is the signal the logic belongs in core.
+
 ## Build and test
 
-`src-tauri/helper` is a **separate cargo workspace**. `cargo test` in `src-tauri`
-does not run its tests — run both.
+```bash
+cargo test --workspace     # 37 tests
+npm run build              # tsc + vite
+```
+
+Tauri resolves `externalBin` as `<path>-<target-triple>`, so the helper must be
+staged before a bundle build or it fails with "resource path doesn't exist":
 
 ```bash
-cd src-tauri && cargo test          # 23 tests
-cd src-tauri/helper && cargo test   #  9 tests
-npm run build                       # tsc + vite
+cargo build --release -p luxor-helper && ./scripts/stage-helper.sh
 ```
 
 `cargo test` links tauri, so it needs `libwebkit2gtk-4.1-dev libgtk-3-dev
 libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev`.
 
+## Capabilities
+
+`core::platform` probes what the host can actually do and returns a `Support`
+value carrying a reason. Never offer a control for a capability that is not
+`Available` — the whole point is that the UI greys it out and explains why,
+instead of failing at the moment the user commits. `NotImplemented` and
+`Unsupported` are different answers and both are legitimate; say which.
+
 ## Invariants
 
 These encode fixed bugs. Breaking one reintroduces a known vulnerability.
 
-**The helper never takes a command string.** `helper/src/action.rs` defines a
-closed `PrivilegedAction` enum. Parameters are newtypes that validate during
+**The helper never takes a command string.** `crates/luxor-ipc/src/lib.rs`
+defines a closed `PrivilegedAction` enum. Parameters are newtypes that validate during
 deserialization, so an action value that exists is already safe to run. To add a
 capability, add a variant and its validator — never widen an allowlist, never
 accept a path or command from the caller. The previous string-allowlist design
@@ -66,10 +92,8 @@ so a descriptive auth prompt only works for deb/rpm installs. See
 
 ## Roadmap
 
-Phase 0 (safety) is done. Next: workspace split into `luxor-core` (no Tauri dep)
-/ `luxor-cli` / `luxor-desktop`, then a `Platform` capability trait returning
-`Option` per capability so the UI greys out what a host genuinely cannot do.
-Then telemetry plus a benchmark/auto-revert loop — that loop is the product's
+Phases 0 (safety) and 1 (workspace split, `Platform` trait) are done. Next:
+telemetry plus a benchmark/auto-revert loop — that loop is the product's
 actual differentiator and everything tuning-related depends on it.
 
 Kernel and overclocking work comes after, and must be safe by construction:

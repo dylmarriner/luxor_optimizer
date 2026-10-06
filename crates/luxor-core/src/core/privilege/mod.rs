@@ -6,7 +6,7 @@
 //! deliberate edit to the shared contract, never a consequence of user input.
 
 use anyhow::{bail, Context, Result};
-use luxor_helper::action::{HelperRequest, HelperResponse, PrivilegedAction, Status};
+use luxor_ipc::{HelperRequest, HelperResponse, PrivilegedAction, Status};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -114,7 +114,7 @@ impl PrivilegeBroker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use luxor_helper::action::{SysctlKey, SysctlValue};
+    use luxor_ipc::{SysctlKey, SysctlValue};
 
     fn swappiness(value: u64) -> PrivilegedAction {
         PrivilegedAction::SetSysctl {

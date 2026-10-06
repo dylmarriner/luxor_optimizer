@@ -1,6 +1,8 @@
+//! Tauri shell. Command wiring only — the logic lives in `luxor-core`.
+
 pub mod commands;
-pub mod core;
-pub mod models;
+
+pub use luxor_core::{core, models};
 
 use commands::system::{
     analyze_audit_event, apply_optimization, apply_safe_cleanup, detect_system_profile,
