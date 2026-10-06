@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Luxor Optimizer</vendor>
+  <vendor_url>https://github.com/dylmarriner/luxor_optimizer</vendor_url>
+
+  <!--
+    Without this file pkexec falls back to a generic "authenticate to run
+    /path/to/luxor-helper as root" prompt, which tells the user nothing about
+    what they are approving. The message below is what makes the consent real.
+
+    auth_admin (not auth_admin_keep) is deliberate: each privileged action
+    re-prompts rather than opening a grace window during which any later
+    action runs unchallenged.
+  -->
+  <action id="nz.linkr.luxor-optimizer.helper">
+    <description>Apply a Luxor Optimizer system change</description>
+    <message>Luxor Optimizer needs administrator access to change a kernel tunable, CPU governor, system service, or package cache. The exact change was shown to you before this prompt.</message>
+    <icon_name>utilities-system-monitor</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/luxor-optimizer/luxor-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

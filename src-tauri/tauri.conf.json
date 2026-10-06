@@ -25,12 +25,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "deb", "rpm"],
+    "targets": [
+      "appimage",
+      "deb",
+      "rpm"
+    ],
     "linux": {
       "appimage": {
         "bundleMediaFramework": false
       }
     },
-    "externalBin": ["helper/target/release/luxor-helper"]
+    "externalBin": [
+      "helper/target/release/luxor-helper"
+    ],
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }

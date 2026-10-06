@@ -2,6 +2,7 @@ node_modules/
 dist/
 frontend/dist/
 src-tauri/target/
+src-tauri/helper/target/
 *.AppImage
 *.zsync
 *.tar.gz
@@ -9,3 +10,4 @@ src-tauri/target/
 *.jsonl
 *.sha256
 .DS_Store
+.serena/

@@ -12,9 +12,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
       - name: Run tests
         working-directory: src-tauri
         run: cargo test --all-targets
+
+      - name: Run helper tests
+        working-directory: src-tauri/helper
+        run: cargo test --all-targets
+
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo fmt --check || echo "::warning::rustfmt differences present"
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -35,5 +48,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
       - run: npm ci
       - run: ./scripts/build-appimage.sh

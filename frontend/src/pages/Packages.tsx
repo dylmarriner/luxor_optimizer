@@ -5,15 +5,25 @@ import { runFullScan } from "../lib/api";
 interface PackageRecord {
   name: string;
   source: "Native" | "Flatpak" | "Snap" | "AppImage";
-  installed_size_bytes: number;
+  installed_size_bytes: number | null;
   criticality: string;
   last_used_days_ago?: number;
   rationale: string[];
   risk_score: number;
 }
 
-function formatGiB(bytes: number) {
-  return `${(bytes / (1024 ** 3)).toFixed(2)} GiB`;
+function formatSize(bytes: number | null) {
+  // Unknown is shown as unknown. Rendering it as "0.00 GiB" would read as a
+  // measurement, which is exactly the fabrication this replaced.
+  if (bytes === null || bytes === undefined) return "unknown";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 && unit > 0 ? 2 : 0)} ${units[unit]}`;
 }
 
 function mapRisk(score: number): "safe" | "review" | "expert" {
@@ -62,7 +72,7 @@ export function PackagesPage() {
               <tr key={row.name}>
                 <td>{row.name}</td>
                 <td>{row.source.toLowerCase()}</td>
-                <td>{formatGiB(row.installed_size_bytes)}</td>
+                <td>{formatSize(row.installed_size_bytes)}</td>
                 <td>{row.criticality}</td>
                 <td>{row.rationale.join(" • ")}</td>
                 <td>

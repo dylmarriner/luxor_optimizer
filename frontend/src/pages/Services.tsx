@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { listServices, toggleService, ServiceRecord } from '../lib/api';
+import { listServices, previewToggleService, toggleService, ServiceRecord } from '../lib/api';
 
 const Services: React.FC = () => {
   const [services, setServices] = useState<ServiceRecord[]>([]);
@@ -7,6 +7,7 @@ const Services: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'non-essential'>('non-essential');
+  const [pending, setPending] = useState<{ name: string; enable: boolean; effect: string } | null>(null);
 
   const fetchServices = async () => {
     try {
@@ -24,13 +25,32 @@ const Services: React.FC = () => {
     fetchServices();
   }, []);
 
-  const handleToggle = async (name: string, enable: boolean) => {
+  // Step 1: ask what the change would do, without doing it. Disabling the
+  // wrong unit is the failure mode this page exists to avoid.
+  const handlePreview = async (name: string, enable: boolean) => {
     try {
       setToggling(name);
-      await toggleService(name, enable);
+      setError(null);
+      const effect = await previewToggleService(name, enable);
+      setPending({ name, enable, effect });
+    } catch (err) {
+      setError(`Could not preview the change: ${err}`);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  // Step 2: carry out the change the user just confirmed.
+  const handleConfirm = async () => {
+    if (!pending) return;
+    try {
+      setToggling(pending.name);
+      setError(null);
+      await toggleService(pending.name, pending.enable);
+      setPending(null);
       await fetchServices();
     } catch (err) {
-      alert(`Operation failed: ${err}`);
+      setError(`Operation failed: ${err}`);
     } finally {
       setToggling(null);
     }
@@ -41,7 +61,6 @@ const Services: React.FC = () => {
     : services;
 
   if (loading) return <div className="page-container">Scanning services...</div>;
-  if (error) return <div className="page-container error-text">Error: {error}</div>;
 
   return (
     <div className="page-container">
@@ -66,6 +85,37 @@ const Services: React.FC = () => {
         </div>
       </header>
 
+      {error && <div className="card alert-error">{error}</div>}
+
+      {pending && (
+        <div className="card">
+          <h2>Confirm service change</h2>
+          <p>
+            Luxor will <strong>{pending.effect}</strong>.
+          </p>
+          <div className="hint">
+            Disabling a unit other services depend on can leave the system in a
+            degraded state until it is re-enabled.
+          </div>
+          <div className="flex-gap inherit-font mt-12">
+            <button
+              className="btn btn-primary"
+              disabled={toggling !== null}
+              onClick={handleConfirm}
+            >
+              {toggling ? 'Applying...' : `Confirm ${pending.enable ? 'enable' : 'disable'}`}
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={toggling !== null}
+              onClick={() => setPending(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid">
         {filteredServices.map((service) => (
           <div key={service.name} className={`card service-card ${service.non_essential ? 'highlight-warn' : ''}`}>
@@ -83,7 +133,7 @@ const Services: React.FC = () => {
               </div>
               <button
                 className={`btn ${service.enabled ? 'btn-danger' : 'btn-success'}`}
-                onClick={() => handleToggle(service.name, !service.enabled)}
+                onClick={() => handlePreview(service.name, !service.enabled)}
                 disabled={toggling === service.name}
               >
                 {toggling === service.name ? '...' : (service.enabled ? 'Disable' : 'Enable')}

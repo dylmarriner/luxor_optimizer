@@ -1,6 +1,6 @@
 use crate::core::policy::PolicyEngine;
 use crate::models::{CleanupDisposition, CleanupFinding, SystemProfile};
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use dirs::{cache_dir, download_dir, home_dir};
 use std::{fs, path::PathBuf};
 
@@ -135,7 +135,9 @@ impl CleanupEngine {
         Ok(findings
             .into_iter()
             .filter(|f| f.bytes > 0 || f.path.contains("flatpak") || f.path.contains("/var/cache"))
-            .filter(|f| !self.policy.is_protected_path(&f.path))
+            // A finding that cannot legally be deleted must never be shown
+            // as deletable. Non-path findings (command previews) are kept.
+            .filter(|f| !f.path.starts_with('/') || self.policy.is_deletable(&f.path).is_ok())
             .collect())
     }
 
@@ -184,18 +186,47 @@ impl CleanupEngine {
         }
     }
 
+    /// Delete the contents of a finding's directory.
+    ///
+    /// Re-validates the finding rather than trusting the caller: a finding that
+    /// reached this point through a stale scan, a mutated struct, or a future
+    /// call site still cannot delete anything the policy protects.
     pub fn apply(&self, finding: &CleanupFinding) -> Result<()> {
+        if !matches!(finding.disposition, CleanupDisposition::SafeAuto) {
+            bail!(
+                "{} is classified {:?} and needs explicit approval, not automatic cleanup",
+                finding.id,
+                finding.disposition
+            );
+        }
+        if let Err(refusal) = self.policy.is_deletable(&finding.path) {
+            bail!("refusing to purge {}: {refusal}", finding.path);
+        }
+
         let path = PathBuf::from(&finding.path);
-        if path.exists() && path.is_dir() {
-            // For safety, we only clear contents of directories marked as SafeAuto
-            for entry in fs::read_dir(&path)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    fs::remove_file(path)?;
-                } else if path.is_dir() {
-                    fs::remove_dir_all(path)?;
-                }
+        if !path.exists() {
+            return Ok(());
+        }
+
+        // A symlinked cache directory would redirect the delete elsewhere.
+        let meta = fs::symlink_metadata(&path)
+            .with_context(|| format!("stat {}", path.display()))?;
+        if meta.file_type().is_symlink() {
+            bail!("{} is a symlink; refusing to purge", path.display());
+        }
+        if !meta.is_dir() {
+            bail!("{} is not a directory", path.display());
+        }
+
+        for entry in fs::read_dir(&path).with_context(|| format!("listing {}", path.display()))? {
+            let entry = entry?;
+            let child = entry.path();
+            let child_meta = fs::symlink_metadata(&child)?;
+            if child_meta.is_dir() && !child_meta.file_type().is_symlink() {
+                fs::remove_dir_all(&child)
+                    .with_context(|| format!("removing {}", child.display()))?;
+            } else {
+                fs::remove_file(&child).with_context(|| format!("removing {}", child.display()))?;
             }
         }
         Ok(())
